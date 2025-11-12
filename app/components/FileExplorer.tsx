@@ -1,24 +1,12 @@
-'use client';
+"use client";
 
-import { useEffect, useRef, useState } from 'react';
-
-type FileTreeNode = {
-  type: 'file' | 'folder';
-  name: string;
-  path: string;
-  children?: FileTreeNode[];
-  extension?: string;
-  sizeInBytes?: number;
-  modifiedAt?: string;
-};
-
-// NOTE: This type is intentionally loose. Refine it during the exercise to avoid
-// optional property checks sprinkled throughout the tree-handling logic.
-
-type VisibleNode = {
-  node: FileTreeNode;
-  depth: number;
-};
+import { useEffect, useRef, useState } from "react";
+import {
+  countFilesWithinFolder,
+  FileTreeNode,
+  findTypeaheadMatch,
+  VisibleNode,
+} from "../utils";
 
 const INDENT = 20;
 const TYPEAHEAD_RESET_MS = 800; // Delay before clearing the type-ahead buffer
@@ -27,11 +15,16 @@ export function FileExplorer() {
   const [tree, setTree] = useState<FileTreeNode | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(['root']));
+  const [expanded, setExpanded] = useState<Set<string>>(
+    () => new Set(["root"])
+  );
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
-  const nodeRefs = useRef<Map<string, HTMLButtonElement>>(new Map()); // Cache button refs for focus management
+
+  // Cache button refs for focus management
+  const nodeRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+
   const typeaheadState = useRef<{ buffer: string; lastInputTime: number }>({
-    buffer: '',
+    buffer: "",
     lastInputTime: 0,
   });
 
@@ -41,7 +34,7 @@ export function FileExplorer() {
     async function loadTree() {
       setLoading(true);
       try {
-        const response = await fetch('/api/file-tree');
+        const response = await fetch("/api/file-tree");
         if (!response.ok) {
           throw new Error(`Request failed with status ${response.status}`);
         }
@@ -52,7 +45,7 @@ export function FileExplorer() {
         }
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Unknown error');
+          setError(err instanceof Error ? err.message : "Unknown error");
         }
       } finally {
         if (!cancelled) {
@@ -72,7 +65,9 @@ export function FileExplorer() {
 
   const selectedNode = findNodeByPath(tree, selectedPath);
   const selectedFolderFileCount =
-    selectedNode && selectedNode.type === 'folder' ? countFilesWithinFolder(selectedNode) : null;
+    selectedNode && selectedNode.type === "folder"
+      ? countFilesWithinFolder(selectedNode)
+      : null;
 
   // Keep the currently selected node focused and in view.
   useEffect(() => {
@@ -83,14 +78,15 @@ export function FileExplorer() {
     const target = nodeRefs.current.get(selectedPath);
     if (target) {
       target.focus({ preventScroll: true });
-      target.scrollIntoView({ block: 'nearest' });
+      target.scrollIntoView({ block: "nearest" });
     }
   }, [selectedPath]);
 
   const onNodeClick = (item: VisibleNode) => {
     const target = item.node;
 
-    if (target.type === 'folder') {
+    // Fixed bug so that it uses set for paths.
+    if (target.type === "folder") {
       setExpanded((prev) => {
         const next = new Set(prev);
         if (next.has(target.path)) {
@@ -126,7 +122,10 @@ export function FileExplorer() {
         return;
       }
 
-      const nextIndex = Math.min(Math.max(currentIndex + delta, 0), visibleNodes.length - 1);
+      const nextIndex = Math.min(
+        Math.max(currentIndex + delta, 0),
+        visibleNodes.length - 1
+      );
       if (nextIndex !== currentIndex) {
         setSelectedPath(visibleNodes[nextIndex].node.path);
       }
@@ -149,15 +148,15 @@ export function FileExplorer() {
     };
 
     switch (event.key) {
-      case 'ArrowDown':
+      case "ArrowDown":
         event.preventDefault();
         moveSelection(1);
         return;
-      case 'ArrowUp':
+      case "ArrowUp":
         event.preventDefault();
         moveSelection(-1);
         return;
-      case 'ArrowRight':
+      case "ArrowRight":
         event.preventDefault();
         if (!selectedNode) {
           if (visibleNodes.length > 0) {
@@ -166,25 +165,27 @@ export function FileExplorer() {
           return;
         }
 
-        if (selectedNode.type === 'folder') {
+        if (selectedNode.type === "folder") {
           if (!expanded.has(selectedNode.path)) {
             expandFolder(selectedNode.path);
             return;
           }
 
-          const firstChild = Array.isArray(selectedNode.children) ? selectedNode.children[0] : null;
+          const firstChild = Array.isArray(selectedNode.children)
+            ? selectedNode.children[0]
+            : null;
           if (firstChild) {
             setSelectedPath(firstChild.path);
           }
         }
         return;
-      case 'ArrowLeft':
+      case "ArrowLeft":
         event.preventDefault();
         if (!selectedNode) {
           return;
         }
 
-        if (selectedNode.type === 'folder' && expanded.has(selectedNode.path)) {
+        if (selectedNode.type === "folder" && expanded.has(selectedNode.path)) {
           collapseFolder(selectedNode.path);
           return;
         }
@@ -198,18 +199,26 @@ export function FileExplorer() {
         break;
     }
 
-    if (event.key === 'Escape') {
-      typeaheadState.current = { buffer: '', lastInputTime: 0 };
+    if (event.key === "Escape") {
+      typeaheadState.current = { buffer: "", lastInputTime: 0 };
       return;
     }
 
-    if (event.key.length !== 1 || event.ctrlKey || event.metaKey || event.altKey) {
+    if (
+      event.key.length !== 1 ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.altKey
+    ) {
       return;
     }
 
     const now = Date.now();
-    const shouldReset = now - typeaheadState.current.lastInputTime > TYPEAHEAD_RESET_MS;
-    const nextBuffer = (shouldReset ? event.key : typeaheadState.current.buffer + event.key).toLowerCase();
+    const shouldReset =
+      now - typeaheadState.current.lastInputTime > TYPEAHEAD_RESET_MS;
+    const nextBuffer = (
+      shouldReset ? event.key : typeaheadState.current.buffer + event.key
+    ).toLowerCase();
     typeaheadState.current = { buffer: nextBuffer, lastInputTime: now };
 
     const match = findTypeaheadMatch(nextBuffer, visibleNodes, selectedPath);
@@ -223,7 +232,9 @@ export function FileExplorer() {
     <div className="file-explorer">
       <div className="file-explorer__tree">
         <header className="file-explorer__toolbar">
-          <p className="file-explorer__hint">Enhance this view with keyboard type-ahead support.</p>
+          <p className="file-explorer__hint">
+            Enhance this view with keyboard type-ahead support.
+          </p>
         </header>
 
         <div
@@ -233,7 +244,9 @@ export function FileExplorer() {
           tabIndex={0}
           onKeyDown={handleTreeKeyDown}
         >
-          {loading && <p className="file-explorer__status">Loading file tree…</p>}
+          {loading && (
+            <p className="file-explorer__status">Loading file tree…</p>
+          )}
           {error && !loading && (
             <p className="file-explorer__status file-explorer__status--error">
               Failed to load files: {error}
@@ -248,7 +261,7 @@ export function FileExplorer() {
             !error &&
             visibleNodes.map((item) => {
               const { node, depth } = item;
-              const isFolder = node.type === 'folder';
+              const isFolder = node.type === "folder";
               const isExpanded = expanded.has(node.path);
               const isSelected = node.path === selectedPath;
               const inlineCount =
@@ -264,12 +277,14 @@ export function FileExplorer() {
                   aria-expanded={isFolder ? isExpanded : undefined}
                   aria-selected={isSelected}
                   className={[
-                    'file-explorer__node',
-                    isFolder ? 'file-explorer__node--folder' : 'file-explorer__node--file',
-                    isSelected ? 'file-explorer__node--selected' : '',
+                    "file-explorer__node",
+                    isFolder
+                      ? "file-explorer__node--folder"
+                      : "file-explorer__node--file",
+                    isSelected ? "file-explorer__node--selected" : "",
                   ]
                     .filter(Boolean)
-                    .join(' ')}
+                    .join(" ")}
                   style={{ paddingLeft: INDENT + depth * INDENT }}
                   onClick={() => onNodeClick(item)}
                   tabIndex={isSelected ? 0 : -1}
@@ -281,10 +296,10 @@ export function FileExplorer() {
                     nodeRefs.current.set(node.path, element);
                   }}
                 >
-                  {isFolder ? (isExpanded ? '📂' : '📁') : '📄'} {node.name}
+                  {isFolder ? (isExpanded ? "📂" : "📁") : "📄"} {node.name}
                   {inlineCount !== null && (
                     <span className="file-explorer__node-count">
-                      ({inlineCount} {inlineCount === 1 ? 'file' : 'files'})
+                      ({inlineCount} {inlineCount === 1 ? "file" : "files"})
                     </span>
                   )}
                 </button>
@@ -293,10 +308,15 @@ export function FileExplorer() {
         </div>
       </div>
 
-      <aside className="file-explorer__details" aria-label="Selected item details">
+      <aside
+        className="file-explorer__details"
+        aria-label="Selected item details"
+      >
         {selectedNode ? (
           <div>
-            <h2 className="file-explorer__details-title">{selectedNode.name}</h2>
+            <h2 className="file-explorer__details-title">
+              {selectedNode.name}
+            </h2>
             <dl className="file-explorer__details-grid">
               <dt>Path</dt>
               <dd>{selectedNode.path}</dd>
@@ -308,7 +328,8 @@ export function FileExplorer() {
               )}
             </dl>
             <p className="file-explorer__next-step">
-              Flesh this panel out with richer insights derived from the data source.
+              Flesh this panel out with richer insights derived from the data
+              source.
             </p>
           </div>
         ) : (
@@ -328,7 +349,7 @@ function flattenTree(root: FileTreeNode, expanded: Set<string>): VisibleNode[] {
   const visit = (node: FileTreeNode, depth: number) => {
     result.push({ node, depth });
 
-    if (node.type === 'folder' && expanded.has(node.path)) {
+    if (node.type === "folder" && expanded.has(node.path)) {
       const children = Array.isArray(node.children) ? node.children : [];
       children.forEach((child) => visit(child, depth + 1));
     }
@@ -339,7 +360,10 @@ function flattenTree(root: FileTreeNode, expanded: Set<string>): VisibleNode[] {
   return result;
 }
 
-function findNodeByPath(root: FileTreeNode | null, path: string | null): FileTreeNode | null {
+function findNodeByPath(
+  root: FileTreeNode | null,
+  path: string | null
+): FileTreeNode | null {
   if (!root || !path) {
     return null;
   }
@@ -348,7 +372,9 @@ function findNodeByPath(root: FileTreeNode | null, path: string | null): FileTre
     return root;
   }
 
-  const stack: FileTreeNode[] = Array.isArray(root.children) ? [...root.children] : [];
+  const stack: FileTreeNode[] = Array.isArray(root.children)
+    ? [...root.children]
+    : [];
 
   while (stack.length > 0) {
     const current = stack.pop();
@@ -358,7 +384,7 @@ function findNodeByPath(root: FileTreeNode | null, path: string | null): FileTre
     if (current.path === path) {
       return current;
     }
-    if (current.type === 'folder' && Array.isArray(current.children)) {
+    if (current.type === "folder" && Array.isArray(current.children)) {
       stack.push(...current.children);
     }
   }
@@ -366,14 +392,18 @@ function findNodeByPath(root: FileTreeNode | null, path: string | null): FileTre
   return null;
 }
 
-function findParentPath(root: FileTreeNode | null, targetPath: string | null): string | null {
+function findParentPath(
+  root: FileTreeNode | null,
+  targetPath: string | null
+): string | null {
   if (!root || !targetPath || root.path === targetPath) {
     return null;
   }
 
-  const stack: Array<{ node: FileTreeNode; parentPath: string }> = Array.isArray(root.children)
-    ? root.children.map((child) => ({ node: child, parentPath: root.path }))
-    : [];
+  const stack: Array<{ node: FileTreeNode; parentPath: string }> =
+    Array.isArray(root.children)
+      ? root.children.map((child) => ({ node: child, parentPath: root.path }))
+      : [];
 
   while (stack.length > 0) {
     const current = stack.pop();
@@ -385,54 +415,13 @@ function findParentPath(root: FileTreeNode | null, targetPath: string | null): s
       return current.parentPath;
     }
 
-    if (current.node.type === 'folder' && Array.isArray(current.node.children)) {
+    if (
+      current.node.type === "folder" &&
+      Array.isArray(current.node.children)
+    ) {
       current.node.children.forEach((child) =>
-        stack.push({ node: child, parentPath: current.node.path }),
+        stack.push({ node: child, parentPath: current.node.path })
       );
-    }
-  }
-
-  return null;
-}
-
-function countFilesWithinFolder(node: FileTreeNode): number {
-  if (node.type !== 'folder') {
-    return 0;
-  }
-
-  const children = Array.isArray(node.children) ? node.children : [];
-  let total = 0;
-
-  for (const child of children) {
-    if (child.type === 'file') {
-      total += 1;
-      continue;
-    }
-    total += countFilesWithinFolder(child);
-  }
-
-  return total;
-}
-
-// Locate the next visible node whose name matches the buffered query.
-function findTypeaheadMatch(
-  query: string,
-  nodes: VisibleNode[],
-  selectedPath: string | null,
-): VisibleNode | null {
-  const normalized = query.trim().toLowerCase();
-  if (!normalized || nodes.length === 0) {
-    return null;
-  }
-
-  const startIndex = selectedPath ? nodes.findIndex((item) => item.node.path === selectedPath) : -1;
-  const total = nodes.length;
-
-  for (let offset = 1; offset <= total; offset++) {
-    const index = (startIndex + offset + total) % total;
-    const candidate = nodes[index];
-    if (candidate.node.name.toLowerCase().startsWith(normalized)) {
-      return candidate;
     }
   }
 
