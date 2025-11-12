@@ -17,6 +17,9 @@ let debounceTimer: NodeJS.Timeout | null = null;
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+
+// This sets up a single debounced fs.watch on tmp/runtime-file-tree, streams refreshed snapshots over SSE, and cleans up the watcher when the last client disconnects.
+
 // Streams the full tree whenever the on-disk watcher detects a change.
 export async function GET(_request: NextRequest) {
   await ensureTreeOnDisk();
