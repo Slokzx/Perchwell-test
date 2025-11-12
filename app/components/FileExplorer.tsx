@@ -8,6 +8,8 @@ import {
   VisibleNode,
 } from "../utils";
 
+// Enhancement highlights: arrow-key navigation, Finder-style typeahead, live SSE reloads, and inline folder file counts.
+
 const INDENT = 20;
 const TYPEAHEAD_RESET_MS = 800; // Delay before clearing the type-ahead buffer
 
@@ -28,6 +30,7 @@ export function FileExplorer() {
     lastInputTime: 0,
   });
 
+  // Subscribe to server events so file mutations immediately refresh the tree.
   useEffect(() => {
     let cancelled = false;
 
@@ -58,6 +61,42 @@ export function FileExplorer() {
 
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const source = new EventSource("/api/file-tree/stream");
+
+    source.onmessage = (event) => {
+      try {
+        const payload: FileTreeNode = JSON.parse(event.data);
+        if (cancelled) {
+          return;
+        }
+        setTree(payload);
+        setError(null);
+        setLoading(false);
+        setSelectedPath((previous) => {
+          if (!previous) {
+            return previous;
+          }
+          return findNodeByPath(payload, previous) ? previous : null;
+        });
+      } catch (error) {
+        console.error("Failed to parse file tree SSE payload", error);
+      }
+    };
+
+    source.onerror = () => {
+      if (!cancelled) {
+        setError("Live updates disconnected. Retrying…");
+      }
+    };
+
+    return () => {
+      cancelled = true;
+      source.close();
     };
   }, []);
 
@@ -311,6 +350,13 @@ export function FileExplorer() {
             <dl className="file-explorer__details-grid">
               <dt>Path</dt>
               <dd>{selectedNode.path}</dd>
+              {/* Surface aggregated child counts so folders have immediate context. */}
+              {selectedFolderFileCount !== null && (
+                <>
+                  <dt>Total files</dt>
+                  <dd>{selectedFolderFileCount}</dd>
+                </>
+              )}
             </dl>
             <p className="file-explorer__next-step">
               Flesh this panel out with richer insights derived from the data

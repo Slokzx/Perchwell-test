@@ -37,6 +37,8 @@ The existing explorer renders the API data but has intentional shortcomings to d
 - Implement a way to watch for file changes and deliver the updates to the frontend in real-time.
 - Your solution and the complexity you choose is up to you. Please add comments about the decisions you made and why.
 
+  > Implemented as an SSE stream (`/api/file-tree/stream`) powered by a single Node `fs.watch` listener so we only flatten the tree when something actually mutates. Events are debounced and broadcast to the client over a heartbeated EventSource, keeping the UI in sync without polling while also releasing the watcher when the last subscriber disconnects.
+
 ## Evaluation criteria
 
 We are specifically looking for:

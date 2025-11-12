@@ -25,12 +25,12 @@ export async function GET() {
   }
 }
 
-async function ensureTreeOnDisk() {
+export async function ensureTreeOnDisk() {
   await fs.mkdir(path.dirname(TREE_ROOT_DIRECTORY), { recursive: true });
   await execFileAsync(SCRIPT_PATH, [TREE_ROOT_DIRECTORY]);
 }
 
-async function readTree(): Promise<FolderNode> {
+export async function readTree(): Promise<FolderNode> {
   const stats = await fs.stat(TREE_ROOT_DIRECTORY);
   if (!stats.isDirectory()) {
     throw new Error(`Expected ${TREE_ROOT_DIRECTORY} to be a directory.`);
