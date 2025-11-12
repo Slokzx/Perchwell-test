@@ -1,0 +1,324 @@
+'use client';
+
+import { useEffect, useRef, useState } from 'react';
+
+type FileTreeNode = {
+  type: 'file' | 'folder';
+  name: string;
+  path: string;
+  children?: FileTreeNode[];
+  extension?: string;
+  sizeInBytes?: number;
+  modifiedAt?: string;
+};
+
+// NOTE: This type is intentionally loose. Refine it during the exercise to avoid
+// optional property checks sprinkled throughout the tree-handling logic.
+
+type VisibleNode = {
+  node: FileTreeNode;
+  depth: number;
+};
+
+const INDENT = 20;
+const TYPEAHEAD_RESET_MS = 800; // Delay before clearing the type-ahead buffer
+
+export function FileExplorer() {
+  const [tree, setTree] = useState<FileTreeNode | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(['root']));
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const nodeRefs = useRef<Map<string, HTMLButtonElement>>(new Map()); // Cache button refs for focus management
+  const typeaheadState = useRef<{ buffer: string; lastInputTime: number }>({
+    buffer: '',
+    lastInputTime: 0,
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadTree() {
+      setLoading(true);
+      try {
+        const response = await fetch('/api/file-tree');
+        if (!response.ok) {
+          throw new Error(`Request failed with status ${response.status}`);
+        }
+        const payload: FileTreeNode = await response.json();
+        if (!cancelled) {
+          setTree(payload);
+          setError(null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Unknown error');
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadTree();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const visibleNodes = tree ? flattenTree(tree, expanded) : [];
+
+  const selectedNode = findNodeByPath(tree, selectedPath);
+  const selectedFolderFileCount =
+    selectedNode && selectedNode.type === 'folder' ? countFilesWithinFolder(selectedNode) : null;
+
+  // Keep the currently selected node focused and in view.
+  useEffect(() => {
+    if (!selectedPath) {
+      return;
+    }
+
+    const target = nodeRefs.current.get(selectedPath);
+    if (target) {
+      target.focus({ preventScroll: true });
+      target.scrollIntoView({ block: 'nearest' });
+    }
+  }, [selectedPath]);
+
+  const onNodeClick = (item: VisibleNode) => {
+    const target = item.node;
+
+    if (target.type === 'folder') {
+      setExpanded((prev) => {
+        const next = new Set(prev);
+        if (next.has(target.path)) {
+          next.delete(target.path);
+        } else {
+          next.add(target.path);
+        }
+        return next;
+      });
+    }
+
+    setSelectedPath(target.path);
+  };
+
+  // Capture printable key presses to drive Finder-style type-ahead selection.
+  const handleTreeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.defaultPrevented) {
+      return;
+    }
+
+    if (event.key === 'Escape') {
+      typeaheadState.current = { buffer: '', lastInputTime: 0 };
+      return;
+    }
+
+    if (event.key.length !== 1 || event.ctrlKey || event.metaKey || event.altKey) {
+      return;
+    }
+
+    const now = Date.now();
+    const shouldReset = now - typeaheadState.current.lastInputTime > TYPEAHEAD_RESET_MS;
+    const nextBuffer = (shouldReset ? event.key : typeaheadState.current.buffer + event.key).toLowerCase();
+    typeaheadState.current = { buffer: nextBuffer, lastInputTime: now };
+
+    const match = findTypeaheadMatch(nextBuffer, visibleNodes, selectedPath);
+    if (match) {
+      event.preventDefault();
+      setSelectedPath(match.node.path);
+    }
+  };
+
+  return (
+    <div className="file-explorer">
+      <div className="file-explorer__tree">
+        <header className="file-explorer__toolbar">
+          <p className="file-explorer__hint">Enhance this view with keyboard type-ahead support.</p>
+        </header>
+
+        <div
+          className="file-explorer__body"
+          role="tree"
+          aria-label="Project files"
+          tabIndex={0}
+          onKeyDown={handleTreeKeyDown}
+        >
+          {loading && <p className="file-explorer__status">Loading file tree…</p>}
+          {error && !loading && (
+            <p className="file-explorer__status file-explorer__status--error">
+              Failed to load files: {error}
+            </p>
+          )}
+
+          {!loading && !error && visibleNodes.length === 0 && (
+            <p className="file-explorer__status">No files to display.</p>
+          )}
+
+          {!loading &&
+            !error &&
+            visibleNodes.map((item) => {
+              const { node, depth } = item;
+              const isFolder = node.type === 'folder';
+              const isExpanded = expanded.has(node.path);
+              const isSelected = node.path === selectedPath;
+              const inlineCount =
+                isFolder && isSelected && selectedFolderFileCount !== null
+                  ? selectedFolderFileCount
+                  : null;
+
+              return (
+                <button
+                  key={node.path}
+                  type="button"
+                  role="treeitem"
+                  aria-expanded={isFolder ? isExpanded : undefined}
+                  aria-selected={isSelected}
+                  className={[
+                    'file-explorer__node',
+                    isFolder ? 'file-explorer__node--folder' : 'file-explorer__node--file',
+                    isSelected ? 'file-explorer__node--selected' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                  style={{ paddingLeft: INDENT + depth * INDENT }}
+                  onClick={() => onNodeClick(item)}
+                  tabIndex={isSelected ? 0 : -1}
+                  ref={(element) => {
+                    if (!element) {
+                      nodeRefs.current.delete(node.path);
+                      return;
+                    }
+                    nodeRefs.current.set(node.path, element);
+                  }}
+                >
+                  {isFolder ? (isExpanded ? '📂' : '📁') : '📄'} {node.name}
+                  {inlineCount !== null && (
+                    <span className="file-explorer__node-count">
+                      ({inlineCount} {inlineCount === 1 ? 'file' : 'files'})
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+        </div>
+      </div>
+
+      <aside className="file-explorer__details" aria-label="Selected item details">
+        {selectedNode ? (
+          <div>
+            <h2 className="file-explorer__details-title">{selectedNode.name}</h2>
+            <dl className="file-explorer__details-grid">
+              <dt>Path</dt>
+              <dd>{selectedNode.path}</dd>
+              {selectedFolderFileCount !== null && (
+                <>
+                  <dt>Total files</dt>
+                  <dd>{selectedFolderFileCount}</dd>
+                </>
+              )}
+            </dl>
+            <p className="file-explorer__next-step">
+              Flesh this panel out with richer insights derived from the data source.
+            </p>
+          </div>
+        ) : (
+          <div className="file-explorer__placeholder">
+            <h2>Select an item</h2>
+            <p>Choose a file or folder from the tree to inspect its details.</p>
+          </div>
+        )}
+      </aside>
+    </div>
+  );
+}
+
+function flattenTree(root: FileTreeNode, expanded: Set<string>): VisibleNode[] {
+  const result: VisibleNode[] = [];
+
+  const visit = (node: FileTreeNode, depth: number) => {
+    result.push({ node, depth });
+
+    if (node.type === 'folder' && expanded.has(node.path)) {
+      const children = Array.isArray(node.children) ? node.children : [];
+      children.forEach((child) => visit(child, depth + 1));
+    }
+  };
+
+  visit(root, 0);
+
+  return result;
+}
+
+function findNodeByPath(root: FileTreeNode | null, path: string | null): FileTreeNode | null {
+  if (!root || !path) {
+    return null;
+  }
+
+  if (root.path === path) {
+    return root;
+  }
+
+  const stack: FileTreeNode[] = Array.isArray(root.children) ? [...root.children] : [];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current) {
+      continue;
+    }
+    if (current.path === path) {
+      return current;
+    }
+    if (current.type === 'folder' && Array.isArray(current.children)) {
+      stack.push(...current.children);
+    }
+  }
+
+  return null;
+}
+
+function countFilesWithinFolder(node: FileTreeNode): number {
+  if (node.type !== 'folder') {
+    return 0;
+  }
+
+  const children = Array.isArray(node.children) ? node.children : [];
+  let total = 0;
+
+  for (const child of children) {
+    if (child.type === 'file') {
+      total += 1;
+      continue;
+    }
+    total += countFilesWithinFolder(child);
+  }
+
+  return total;
+}
+
+// Locate the next visible node whose name matches the buffered query.
+function findTypeaheadMatch(
+  query: string,
+  nodes: VisibleNode[],
+  selectedPath: string | null,
+): VisibleNode | null {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized || nodes.length === 0) {
+    return null;
+  }
+
+  const startIndex = selectedPath ? nodes.findIndex((item) => item.node.path === selectedPath) : -1;
+  const total = nodes.length;
+
+  for (let offset = 1; offset <= total; offset++) {
+    const index = (startIndex + offset + total) % total;
+    const candidate = nodes[index];
+    if (candidate.node.name.toLowerCase().startsWith(normalized)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}

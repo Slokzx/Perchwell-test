@@ -1,0 +1,9 @@
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+}
+
+#app {
+  padding: 10px;
+  outline: 2px dashed #ff6600;
+}
