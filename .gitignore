@@ -1,0 +1,9 @@
+node_modules
+.next
+.env
+npm-debug.log*
+yarn-error.log*
+.pnp*
+.pnp.js
+.DS_Store
+tmp/
