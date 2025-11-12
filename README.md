@@ -29,6 +29,8 @@ The existing explorer renders the API data but has intentional shortcomings to d
 - Model the API response with precise TypeScript types—replace the placeholder union in the starter with something safer.
 - Include a written note about how you might make the layout resilient so that the explorer still feels responsive with large amounts of data (10,000+ nodes).
 
+ > For large trees (10,000+ nodes) the UI should only render what is visible. A virtualized list (e.g. `react-window`) paired with incremental data loading keeps DOM size bounded and ensures scroll performance. We can also debounce expensive aggregations, memoize derived counts, and offload tree flattening to a Web Worker so the main thread stays responsive while the layout adjusts smoothly.
+
 ## Backend Task
 
 ### File watcher

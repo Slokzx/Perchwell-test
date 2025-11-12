@@ -105,10 +105,97 @@ export function FileExplorer() {
     setSelectedPath(target.path);
   };
 
-  // Capture printable key presses to drive Finder-style type-ahead selection.
+  // Handle tree keyboard interactions: arrow navigation plus Finder-style type-ahead selection.
   const handleTreeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.defaultPrevented) {
       return;
+    }
+
+    const moveSelection = (delta: number) => {
+      if (visibleNodes.length === 0) {
+        return;
+      }
+
+      const currentIndex = selectedPath
+        ? visibleNodes.findIndex((item) => item.node.path === selectedPath)
+        : -1;
+
+      if (currentIndex === -1) {
+        const fallbackIndex = delta > 0 ? 0 : visibleNodes.length - 1;
+        setSelectedPath(visibleNodes[fallbackIndex].node.path);
+        return;
+      }
+
+      const nextIndex = Math.min(Math.max(currentIndex + delta, 0), visibleNodes.length - 1);
+      if (nextIndex !== currentIndex) {
+        setSelectedPath(visibleNodes[nextIndex].node.path);
+      }
+    };
+
+    const collapseFolder = (path: string) => {
+      setExpanded((prev) => {
+        const next = new Set(prev);
+        next.delete(path);
+        return next;
+      });
+    };
+
+    const expandFolder = (path: string) => {
+      setExpanded((prev) => {
+        const next = new Set(prev);
+        next.add(path);
+        return next;
+      });
+    };
+
+    switch (event.key) {
+      case 'ArrowDown':
+        event.preventDefault();
+        moveSelection(1);
+        return;
+      case 'ArrowUp':
+        event.preventDefault();
+        moveSelection(-1);
+        return;
+      case 'ArrowRight':
+        event.preventDefault();
+        if (!selectedNode) {
+          if (visibleNodes.length > 0) {
+            setSelectedPath(visibleNodes[0].node.path);
+          }
+          return;
+        }
+
+        if (selectedNode.type === 'folder') {
+          if (!expanded.has(selectedNode.path)) {
+            expandFolder(selectedNode.path);
+            return;
+          }
+
+          const firstChild = Array.isArray(selectedNode.children) ? selectedNode.children[0] : null;
+          if (firstChild) {
+            setSelectedPath(firstChild.path);
+          }
+        }
+        return;
+      case 'ArrowLeft':
+        event.preventDefault();
+        if (!selectedNode) {
+          return;
+        }
+
+        if (selectedNode.type === 'folder' && expanded.has(selectedNode.path)) {
+          collapseFolder(selectedNode.path);
+          return;
+        }
+
+        const parentPath = findParentPath(tree, selectedPath);
+        if (parentPath) {
+          setSelectedPath(parentPath);
+        }
+        return;
+      default:
+        break;
     }
 
     if (event.key === 'Escape') {
@@ -273,6 +360,35 @@ function findNodeByPath(root: FileTreeNode | null, path: string | null): FileTre
     }
     if (current.type === 'folder' && Array.isArray(current.children)) {
       stack.push(...current.children);
+    }
+  }
+
+  return null;
+}
+
+function findParentPath(root: FileTreeNode | null, targetPath: string | null): string | null {
+  if (!root || !targetPath || root.path === targetPath) {
+    return null;
+  }
+
+  const stack: Array<{ node: FileTreeNode; parentPath: string }> = Array.isArray(root.children)
+    ? root.children.map((child) => ({ node: child, parentPath: root.path }))
+    : [];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current) {
+      continue;
+    }
+
+    if (current.node.path === targetPath) {
+      return current.parentPath;
+    }
+
+    if (current.node.type === 'folder' && Array.isArray(current.node.children)) {
+      current.node.children.forEach((child) =>
+        stack.push({ node: child, parentPath: current.node.path }),
+      );
     }
   }
 
