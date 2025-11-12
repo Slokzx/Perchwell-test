@@ -204,15 +204,6 @@ export function FileExplorer() {
       return;
     }
 
-    if (
-      event.key.length !== 1 ||
-      event.ctrlKey ||
-      event.metaKey ||
-      event.altKey
-    ) {
-      return;
-    }
-
     const now = Date.now();
     const shouldReset =
       now - typeaheadState.current.lastInputTime > TYPEAHEAD_RESET_MS;
@@ -320,12 +311,6 @@ export function FileExplorer() {
             <dl className="file-explorer__details-grid">
               <dt>Path</dt>
               <dd>{selectedNode.path}</dd>
-              {selectedFolderFileCount !== null && (
-                <>
-                  <dt>Total files</dt>
-                  <dd>{selectedFolderFileCount}</dd>
-                </>
-              )}
             </dl>
             <p className="file-explorer__next-step">
               Flesh this panel out with richer insights derived from the data
